@@ -1,17 +1,3 @@
-from requests.exceptions import RequestException
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-
-from .models import Profile
-from .serializers import (
-    ProfileCreateSerializer,
-    ProfileSerializer,
-    ProfileListSerializer,
-)
-from .services import build_profile_data, ExternalAPIError
-
-
 class ProfileCollectionView(APIView):
     def post(self, request):
         # Validate input
@@ -20,7 +6,7 @@ class ProfileCollectionView(APIView):
                 {"status": "error", "message": "Missing or empty name"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        
+
         if not isinstance(request.data.get("name"), str):
             return Response(
                 {"status": "error", "message": "Invalid type"},
@@ -30,16 +16,18 @@ class ProfileCollectionView(APIView):
         serializer = ProfileCreateSerializer(data=request.data)
         if not serializer.is_valid():
             message = serializer.errors["name"][0]
-            
+
             status_code = (
                 status.HTTP_422_UNPROCESSABLE_ENTITY
                 if str(message) == "Invalid type"
-                 else status.HTTP_400_BAD_REQUEST
-    )
+                else status.HTTP_400_BAD_REQUEST
+            )
             return Response(
                 {"status": "error", "message": str(message)},
                 status=status_code,
-    )
+            )
+
+        name = serializer.validated_data["name"].strip().lower()
 
         # Idempotency check
         existing = Profile.objects.filter(name__iexact=name).first()
@@ -83,59 +71,3 @@ class ProfileCollectionView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
-
-    def get(self, request):
-        profiles = Profile.objects.all()
-
-        gender = request.query_params.get("gender")
-        country_id = request.query_params.get("country_id")
-        age_group = request.query_params.get("age_group")
-
-        if gender:
-            profiles = profiles.filter(gender__iexact=gender)
-
-        if country_id:
-            profiles = profiles.filter(country_id__iexact=country_id)
-
-        if age_group:
-            profiles = profiles.filter(age_group__iexact=age_group)
-
-        return Response(
-            {
-                "status": "success",
-                "count": profiles.count(),
-                "data": ProfileListSerializer(profiles, many=True).data,
-            },
-            status=status.HTTP_200_OK,
-        )
-
-
-class ProfileDetailView(APIView):
-    def get(self, request, profile_id):
-        try:
-            profile = Profile.objects.get(id=profile_id)
-        except Profile.DoesNotExist:
-            return Response(
-                {"status": "error", "message": "Profile not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        return Response(
-            {
-                "status": "success",
-                "data": ProfileSerializer(profile).data,
-            },
-            status=status.HTTP_200_OK,
-        )
-
-    def delete(self, request, profile_id):
-        try:
-            profile = Profile.objects.get(id=profile_id)
-        except Profile.DoesNotExist:
-            return Response(
-                {"status": "error", "message": "Profile not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        profile.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
