@@ -1,6 +1,9 @@
 import requests
 
 
+TIMEOUT = 10
+
+
 class ExternalAPIError(Exception):
     pass
 
@@ -10,6 +13,8 @@ def normalize_name(name: str) -> str:
 
 
 def get_age_group(age: int) -> str:
+    if age < 0:
+        raise ExternalAPIError("Agify returned an invalid response")
     if 0 <= age <= 12:
         return "child"
     if 13 <= age <= 19:
@@ -23,7 +28,7 @@ def fetch_gender_data(name: str) -> dict:
     response = requests.get(
         "https://api.genderize.io",
         params={"name": name},
-        timeout=10,
+        timeout=TIMEOUT,
     )
     response.raise_for_status()
     data = response.json()
@@ -33,8 +38,8 @@ def fetch_gender_data(name: str) -> dict:
 
     return {
         "gender": data["gender"],
-        "gender_probability": data["probability"],
-        "sample_size": data["count"],
+        "gender_probability": float(data["probability"]),
+        "sample_size": int(data["count"]),
     }
 
 
@@ -42,7 +47,7 @@ def fetch_age_data(name: str) -> dict:
     response = requests.get(
         "https://api.agify.io",
         params={"name": name},
-        timeout=10,
+        timeout=TIMEOUT,
     )
     response.raise_for_status()
     data = response.json()
@@ -50,6 +55,8 @@ def fetch_age_data(name: str) -> dict:
     age = data.get("age")
     if age is None:
         raise ExternalAPIError("Agify returned an invalid response")
+
+    age = int(age)
 
     return {
         "age": age,
@@ -61,7 +68,7 @@ def fetch_country_data(name: str) -> dict:
     response = requests.get(
         "https://api.nationalize.io",
         params={"name": name},
-        timeout=10,
+        timeout=TIMEOUT,
     )
     response.raise_for_status()
     data = response.json()
@@ -70,11 +77,17 @@ def fetch_country_data(name: str) -> dict:
     if not countries:
         raise ExternalAPIError("Nationalize returned an invalid response")
 
-    best_country = max(countries, key=lambda item: item["probability"])
+    best_country = max(
+        countries,
+        key=lambda item: item.get("probability", 0),
+    )
+
+    if not best_country.get("country_id"):
+        raise ExternalAPIError("Nationalize returned an invalid response")
 
     return {
         "country_id": best_country["country_id"],
-        "country_probability": best_country["probability"],
+        "country_probability": float(best_country["probability"]),
     }
 
 

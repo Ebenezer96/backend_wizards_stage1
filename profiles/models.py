@@ -1,9 +1,9 @@
-import uuid
+from uuid6 import uuid7
 from django.db import models
 
 
 def generate_uuid7():
-    return uuid.uuid7()
+    return uuid7()
 
 
 class Profile(models.Model):

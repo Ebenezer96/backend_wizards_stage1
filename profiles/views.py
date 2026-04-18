@@ -1,7 +1,21 @@
+from requests.exceptions import RequestException
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import Profile
+from .serializers import (
+    ProfileCreateSerializer,
+    ProfileSerializer,
+    ProfileListSerializer,
+)
+from .services import build_profile_data, ExternalAPIError
+
+
 class ProfileCollectionView(APIView):
     def post(self, request):
         # Validate input
-        if "name" not in request.data:
+        if "name" not in request.data or request.data.get("name") in [None, ""]:
             return Response(
                 {"status": "error", "message": "Missing or empty name"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -22,6 +36,7 @@ class ProfileCollectionView(APIView):
                 if str(message) == "Invalid type"
                 else status.HTTP_400_BAD_REQUEST
             )
+
             return Response(
                 {"status": "error", "message": str(message)},
                 status=status_code,
@@ -41,7 +56,7 @@ class ProfileCollectionView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        # External API processing
+        # External API + DB
         try:
             data = build_profile_data(name)
             profile = Profile.objects.create(**data)
@@ -71,3 +86,63 @@ class ProfileCollectionView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+    def get(self, request):
+        profiles = Profile.objects.all()
+
+        gender = request.query_params.get("gender")
+        country_id = request.query_params.get("country_id")
+        age_group = request.query_params.get("age_group")
+
+        if gender:
+            profiles = profiles.filter(gender__iexact=gender)
+        if country_id:
+            profiles = profiles.filter(country_id__iexact=country_id)
+        if age_group:
+            profiles = profiles.filter(age_group__iexact=age_group)
+
+        data = ProfileListSerializer(profiles, many=True).data
+
+        return Response(
+            {
+                "status": "success",
+                "count": len(data),
+                "data": data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ProfileDetailView(APIView):
+    def get_object(self, id):
+        try:
+            return Profile.objects.get(id=id)
+        except Profile.DoesNotExist:
+            return None
+
+    def get(self, request, id):
+        profile = self.get_object(id)
+        if not profile:
+            return Response(
+                {"status": "error", "message": "Profile not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(
+            {
+                "status": "success",
+                "data": ProfileSerializer(profile).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def delete(self, request, id):
+        profile = self.get_object(id)
+        if not profile:
+            return Response(
+                {"status": "error", "message": "Profile not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        profile.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
