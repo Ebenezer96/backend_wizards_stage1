@@ -7,7 +7,7 @@ djangorestframework==3.17.1
 dj-database-url==3.0.1
 gunicorn==23.0.0
 idna==3.11
-psycopg2-binary==2.9.10
+psycopg[binary]
 requests==2.33.1
 sqlparse==0.5.5
 tzdata==2026.1
