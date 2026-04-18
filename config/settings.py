@@ -45,7 +45,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
-    "config.middleware.AlwaysCorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -125,5 +124,11 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 CORS_ALLOW_ALL_ORIGINS = True
-TIME_ZONE = "UTC"
-USE_TZ = True
+
+CORS_ALLOW_HEADERS = ["*"]
+
+CORS_ALLOW_METHODS = ["DELETE", "GET", "OPTIONS", "POST", "PUT", "PATCH"]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.vercel.app",
+]
