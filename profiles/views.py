@@ -1,7 +1,10 @@
+import json
 from requests.exceptions import RequestException
+from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 
 from .models import Profile
 from .serializers import (
@@ -10,42 +13,43 @@ from .serializers import (
     ProfileListSerializer,
 )
 from .services import build_profile_data, ExternalAPIError
+from .pagination import ProfilePagination  # 👈 NEW
 
 
 class ProfileCollectionView(APIView):
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
+
     def post(self, request):
-        # Validate input
-        if "name" not in request.data or request.data.get("name") in [None, ""]:
-            return Response(
-                {"status": "error", "message": "Missing or empty name"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        data = request.data.copy()
 
-        if not isinstance(request.data.get("name"), str):
-            return Response(
-                {"status": "error", "message": "Invalid type"},
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            )
+        # Handle DRF browsable API raw JSON wrapper
+        if "name" not in data and "_content" in data:
+            try:
+                raw_json = json.loads(data.get("_content", "{}"))
+                data = raw_json
+            except json.JSONDecodeError:
+                return Response(
+                    {"status": "error", "message": "Invalid JSON payload"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-        serializer = ProfileCreateSerializer(data=request.data)
+        serializer = ProfileCreateSerializer(data=data)
+
         if not serializer.is_valid():
-            message = serializer.errors["name"][0]
-
+            message = serializer.errors.get("name", ["Invalid input"])[0]
             status_code = (
                 status.HTTP_422_UNPROCESSABLE_ENTITY
                 if str(message) == "Invalid type"
                 else status.HTTP_400_BAD_REQUEST
             )
-
             return Response(
                 {"status": "error", "message": str(message)},
                 status=status_code,
             )
 
-        name = serializer.validated_data["name"].strip().lower()
+        normalized_name = serializer.validated_data["name"]
 
-        # Idempotency check
-        existing = Profile.objects.filter(name__iexact=name).first()
+        existing = Profile.objects.filter(name__iexact=normalized_name).first()
         if existing:
             return Response(
                 {
@@ -56,9 +60,8 @@ class ProfileCollectionView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        # External API + DB
         try:
-            data = build_profile_data(name)
+            data = build_profile_data(normalized_name)
             profile = Profile.objects.create(**data)
 
         except ExternalAPIError as e:
@@ -73,9 +76,9 @@ class ProfileCollectionView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        except Exception:
+        except Exception as e:
             return Response(
-                {"status": "error", "message": "Internal server error"},
+                {"status": "error", "message": f"Internal server error: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -88,7 +91,7 @@ class ProfileCollectionView(APIView):
         )
 
     def get(self, request):
-        profiles = Profile.objects.all()
+        profiles = Profile.objects.all().order_by("-created_at")
 
         gender = request.query_params.get("gender")
         country_id = request.query_params.get("country_id")
@@ -101,48 +104,27 @@ class ProfileCollectionView(APIView):
         if age_group:
             profiles = profiles.filter(age_group__iexact=age_group)
 
-        data = ProfileListSerializer(profiles, many=True).data
+        # 👇 PAGINATION STARTS HERE
+        paginator = ProfilePagination()
+        paginated_profiles = paginator.paginate_queryset(profiles, request)
+        serializer = ProfileListSerializer(paginated_profiles, many=True)
 
         return Response(
             {
                 "status": "success",
-                "count": len(data),
-                "data": data,
+                "count": paginator.page.paginator.count,
+                "next": paginator.get_next_link(),
+                "previous": paginator.get_previous_link(),
+                "data": serializer.data,
             },
             status=status.HTTP_200_OK,
         )
 
 
 class ProfileDetailView(APIView):
-    def get_object(self, id):
-        try:
-            return Profile.objects.get(id=id)
-        except Profile.DoesNotExist:
-            return None
-
-    def get(self, request, id):
-        profile = self.get_object(id)
-        if not profile:
-            return Response(
-                {"status": "error", "message": "Profile not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
+    def get(self, request, pk):
+        profile = get_object_or_404(Profile, pk=pk)
         return Response(
-            {
-                "status": "success",
-                "data": ProfileSerializer(profile).data,
-            },
+            {"status": "success", "data": ProfileSerializer(profile).data},
             status=status.HTTP_200_OK,
         )
-
-    def delete(self, request, id):
-        profile = self.get_object(id)
-        if not profile:
-            return Response(
-                {"status": "error", "message": "Profile not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        profile.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)

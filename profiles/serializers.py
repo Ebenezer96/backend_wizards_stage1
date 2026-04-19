@@ -3,17 +3,17 @@ from .models import Profile
 
 
 class ProfileCreateSerializer(serializers.Serializer):
-    name = serializers.CharField(allow_blank=True, trim_whitespace=True)
+    name = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        trim_whitespace=True,
+        error_messages={
+            "required": "Missing name",
+            "blank": "Missing or empty name",
+        },
+    )
 
     def validate_name(self, value):
-        if not isinstance(value, str):
-            raise serializers.ValidationError("Invalid type")
-
-        value = value.strip()
-
-        if not value:
-            raise serializers.ValidationError("Missing or empty name")
-
         return value.lower()
 
 
@@ -44,4 +44,5 @@ class ProfileListSerializer(serializers.ModelSerializer):
             "age",
             "age_group",
             "country_id",
+            "created_at",
         ]

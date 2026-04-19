@@ -14,27 +14,30 @@ def normalize_name(name: str) -> str:
 
 def get_age_group(age: int) -> str:
     if age < 0:
-        raise ExternalAPIError("Agify returned an invalid response")
-    if 0 <= age <= 12:
+        raise ExternalAPIError("Invalid age returned by upstream service")
+    if age <= 12:
         return "child"
-    if 13 <= age <= 19:
+    if age <= 19:
         return "teenager"
-    if 20 <= age <= 59:
+    if age <= 59:
         return "adult"
     return "senior"
 
 
+def fetch_json(url: str, name: str) -> dict:
+    try:
+        response = requests.get(url, params={"name": name}, timeout=TIMEOUT)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException:
+        raise
+
+
 def fetch_gender_data(name: str) -> dict:
-    response = requests.get(
-        "https://api.genderize.io",
-        params={"name": name},
-        timeout=TIMEOUT,
-    )
-    response.raise_for_status()
-    data = response.json()
+    data = fetch_json("https://api.genderize.io", name)
 
     if data.get("gender") is None or data.get("count", 0) == 0:
-        raise ExternalAPIError("Genderize returned an invalid response")
+        raise ExternalAPIError("No prediction available for the provided name")
 
     return {
         "gender": data["gender"],
@@ -44,17 +47,11 @@ def fetch_gender_data(name: str) -> dict:
 
 
 def fetch_age_data(name: str) -> dict:
-    response = requests.get(
-        "https://api.agify.io",
-        params={"name": name},
-        timeout=TIMEOUT,
-    )
-    response.raise_for_status()
-    data = response.json()
+    data = fetch_json("https://api.agify.io", name)
 
     age = data.get("age")
     if age is None:
-        raise ExternalAPIError("Agify returned an invalid response")
+        raise ExternalAPIError("No prediction available for the provided name")
 
     age = int(age)
 
@@ -65,25 +62,16 @@ def fetch_age_data(name: str) -> dict:
 
 
 def fetch_country_data(name: str) -> dict:
-    response = requests.get(
-        "https://api.nationalize.io",
-        params={"name": name},
-        timeout=TIMEOUT,
-    )
-    response.raise_for_status()
-    data = response.json()
+    data = fetch_json("https://api.nationalize.io", name)
 
     countries = data.get("country", [])
     if not countries:
-        raise ExternalAPIError("Nationalize returned an invalid response")
+        raise ExternalAPIError("No prediction available for the provided name")
 
-    best_country = max(
-        countries,
-        key=lambda item: item.get("probability", 0),
-    )
+    best_country = max(countries, key=lambda item: item.get("probability", 0))
 
     if not best_country.get("country_id"):
-        raise ExternalAPIError("Nationalize returned an invalid response")
+        raise ExternalAPIError("No prediction available for the provided name")
 
     return {
         "country_id": best_country["country_id"],
