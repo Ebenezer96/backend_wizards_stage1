@@ -13,7 +13,7 @@ from .serializers import (
     ProfileListSerializer,
 )
 from .services import build_profile_data, ExternalAPIError
-from .pagination import ProfilePagination  # 👈 NEW
+from .pagination import ProfilePagination
 
 
 class ProfileCollectionView(APIView):
@@ -104,7 +104,6 @@ class ProfileCollectionView(APIView):
         if age_group:
             profiles = profiles.filter(age_group__iexact=age_group)
 
-        # 👇 PAGINATION STARTS HERE
         paginator = ProfilePagination()
         paginated_profiles = paginator.paginate_queryset(profiles, request)
         serializer = ProfileListSerializer(paginated_profiles, many=True)
