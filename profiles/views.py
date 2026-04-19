@@ -22,11 +22,9 @@ class ProfileCollectionView(APIView):
     def post(self, request):
         data = request.data.copy()
 
-        # Handle DRF browsable API raw JSON wrapper
         if "name" not in data and "_content" in data:
             try:
-                raw_json = json.loads(data.get("_content", "{}"))
-                data = raw_json
+                data = json.loads(data.get("_content", "{}"))
             except json.JSONDecodeError:
                 return Response(
                     {"status": "error", "message": "Invalid JSON payload"},
@@ -54,15 +52,14 @@ class ProfileCollectionView(APIView):
             return Response(
                 {
                     "status": "success",
-                    "message": "Profile already exists",
                     "data": ProfileSerializer(existing).data,
                 },
                 status=status.HTTP_200_OK,
             )
 
         try:
-            data = build_profile_data(normalized_name)
-            profile = Profile.objects.create(**data)
+            profile_data = build_profile_data(normalized_name)
+            profile = Profile.objects.create(**profile_data)
 
         except ExternalAPIError as e:
             return Response(
@@ -76,9 +73,9 @@ class ProfileCollectionView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        except Exception as e:
+        except Exception:
             return Response(
-                {"status": "error", "message": f"Internal server error: {str(e)}"},
+                {"status": "error", "message": "Internal server error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
